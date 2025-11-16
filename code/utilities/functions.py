@@ -1,16 +1,14 @@
-import pandas as pd
-import pandas as pd
+
 import requests
 import tarfile
 import io
 import urllib.request
 import gzip
-import io
 import json
 import pandas as pd
 from statsmodels.stats.proportion import proportions_ztest
-from pathlib import Path  # ADICIONE ESTA LINHA
-import pandas as pd
+from pathlib import Path 
+
 
 def load_data(url: str):
     """
@@ -21,14 +19,14 @@ def load_data(url: str):
     - TAR.GZ contendo um único CSV (ignora arquivos ocultos do macOS)
     Retorna um DataFrame Pandas.
     """
-    # Tenta primeiro como CSV normal (.csv ou .csv.gz)
+  
     try:
         df = pd.read_csv(url, compression="infer")
         return df
     except Exception:
-        pass  # tenta como TAR.GZ
+        pass 
 
-    # Tenta ler como TAR.GZ contendo CSV
+   
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -38,7 +36,7 @@ def load_data(url: str):
         with tarfile.open(fileobj=tar_bytes, mode="r:gz") as tar:
             membros = tar.getnames()
             
-            # Ignora arquivos ocultos do macOS como "._arquivo.csv"
+           
             membros_validos = [m for m in membros if not m.startswith("._")]
 
             if len(membros_validos) != 1:
@@ -150,21 +148,27 @@ def join_group_count(df1, df2, key, how, group_col):
     )
 
 
+
+
 def save_parquet(df, folder_name, filename):
-    project_root = Path(__file__).parent.parent
+    project_root = Path.cwd().parent
     dados_folder = project_root / "dados"
     stage_folder = dados_folder / "stage"
-    bronze_folder = dados_folder / "bronze" 
+    bronze_folder = dados_folder / "bronze"
     silver_folder = dados_folder / "silver"
     gold_folder = dados_folder / "gold"
 
     for folder in [dados_folder, stage_folder, bronze_folder, silver_folder, gold_folder]:
         folder.mkdir(parents=True, exist_ok=True)
-    target_folder = project_root / "dados" / folder_name
+
+    target_folder = dados_folder / folder_name
+    target_folder.mkdir(parents=True, exist_ok=True)
+
     path = target_folder / filename
     df.to_parquet(path, index=False)
 
     return path
+
 
 def merge_df(df1, df2, key, how='left'):
     """
@@ -822,3 +826,249 @@ def analisar_retencao(df):
     }
 
     return resultado 
+
+def segmentacao_3(delta):
+    """
+    Classifica mobilidade e direção com base no delta do decil.
+    Retorna um dicionário com as duas classificações.
+    """
+    # Mobilidade
+    if delta == 0:
+        mobilidade = "Estável"
+    elif abs(delta) == 1:
+        mobilidade = "Mobilidade Moderada"
+    else:
+        mobilidade = "Alta Mobilidade"
+    
+    # Direção
+    if delta < 0:
+        direcao = "Upgrade"
+    elif delta > 0:
+        direcao = "Downgrade"
+    else:
+        direcao = "Estável"
+
+    return {
+        "segmento_mobilidade": mobilidade,
+        "direcao": direcao
+    }
+
+# df com colunas:
+# ['customer_id', 'is_target', 'decil_1', 'decil_12',
+#  'num_pedidos_mes_1', 'num_pedidos_mes_12',
+#  'total_amount_mes_1', 'total_amount_mes_12',
+#  'decil_1_num', 'decil_12_num', 'delta_decil',
+#  'segmento_mobilidade', 'direcao', 'categoria_segmento']
+
+def retidos11(df, mes0=1, mes1=12, pedidos=1, por_segmento=False):
+    """
+    Calcula retenção A/B a partir da base wide já agregada por cliente.
+
+    Parâmetros
+    ----------
+    df : DataFrame
+        Base wide por cliente (1 linha por customer_id).
+    mes0 : int
+        Mês base (ex.: 1).
+    mes1 : int
+        Mês de comparação (ex.: 12).
+    pedidos : int
+        Número mínimo de pedidos no mes1 para considerar retido.
+        Ex.: 0  -> pelo menos 1 pedido
+             1  -> pelo menos 2 pedidos
+    por_segmento : bool
+        Se True, devolve também resumo por segmento (categoria_segmento /
+        segmento_mobilidade / direcao).
+
+    Retorno
+    -------
+    base : DataFrame
+        Base de clientes ativos no mes0 com coluna 'retido'.
+    resumo_global : DataFrame
+        Resumo por is_target (control x target).
+    resumo_segmento : DataFrame (opcional)
+        Resumo por segmento + is_target (se por_segmento=True).
+    """
+
+    # nomes das colunas de frequência e GMV dinamicamente
+    freq0_col = f"num_pedidos_mes_{mes0}"
+    freq1_col = f"num_pedidos_mes_{mes1}"
+    gmv0_col = f"total_amount_mes_{mes0}"
+    gmv1_col = f"total_amount_mes_{mes1}"
+
+    # garante que as colunas existem
+    for c in [freq0_col, freq1_col, gmv0_col, gmv1_col]:
+        if c not in df.columns:
+            raise ValueError(f"Coluna '{c}' não encontrada no DataFrame.")
+
+    base = df.copy()
+
+    # deltas de frequência e GMV
+    base["delta_freq"] = base[freq1_col] - base[freq0_col]
+    base["delta_gmv"] = base[gmv1_col] - base[gmv0_col]
+
+    # base = clientes ativos no mes0
+    base = base[base[freq0_col] > 0].copy()
+
+    # retido = fez mais que `pedidos` no mes1
+    # pedidos=0 => >0 pedidos, pedidos=1 => >1 pedidos, etc.
+    base["retido"] = (base[freq1_col] > pedidos).astype(int)
+
+    # resumo global A/B
+    resumo_global = (
+        base.groupby("is_target")
+            .agg(
+                retidos=("retido", "sum"),
+                base=("retido", "count")
+            )
+    )
+    resumo_global["taxa_retencao"] = resumo_global["retidos"] / resumo_global["base"]
+
+    if not por_segmento:
+        return base, resumo_global
+
+    # resumo por segmento (categoria + mobilidade + direção)
+    resumo_segmento = (
+        base
+        .groupby(["categoria_segmento", "segmento_mobilidade", "direcao", "is_target"])
+        .agg(
+            retidos=("retido", "sum"),
+            base=("retido", "count")
+        )
+        .reset_index()
+    )
+    resumo_segmento["taxa_retencao"] = resumo_segmento["retidos"] / resumo_segmento["base"]
+
+    return base, resumo_global, resumo_segmento
+
+def calcula_viabilidade_wide(df,
+                             mes_campanha=12,
+                             mes_seguinte=1,
+                             coupon_value=10.0,
+                             margin_rate=0.12):
+    """
+    Calcula viabilidade econômica (ROI) da campanha usando base WIDE já agregada por cliente.
+
+    Parâmetros
+    ----------
+    df : DataFrame
+        Deve conter, no mínimo:
+        - customer_id
+        - is_target  ('target' / 'control')
+        - num_pedidos_mes_<mes_campanha>
+        - num_pedidos_mes_<mes_seguinte>
+        - total_amount_mes_<mes_campanha>
+        - total_amount_mes_<mes_seguinte>
+
+        Exemplo de colunas para mes_campanha=12 e mes_seguinte=1:
+        - num_pedidos_mes_12, num_pedidos_mes_1
+        - total_amount_mes_12, total_amount_mes_1
+
+    mes_campanha : int
+        Mês em que o cupom foi disponibilizado (ex: 12).
+    mes_seguinte : int
+        Mês seguinte para retenção (ex: 1).
+    coupon_value : float
+        Valor médio do cupom (R$).
+    margin_rate : float
+        Margem líquida sobre o GMV (0.12 = 12%).
+
+    Retorno
+    -------
+    resultados : dict
+        Métricas agregadas de incremento, margem e ROI.
+    agg : DataFrame
+        Resumo por is_target (pedidos, gmv, clientes) para cada mês.
+    """
+
+    # nomes das colunas dinamicamente
+    freq_camp_col = f"num_pedidos_mes_{mes_campanha}"
+    freq_seg_col  = f"num_pedidos_mes_{mes_seguinte}"
+    gmv_camp_col  = f"total_amount_mes_{mes_campanha}"
+    gmv_seg_col   = f"total_amount_mes_{mes_seguinte}"
+
+    # checagem básica de colunas
+    for c in [freq_camp_col, freq_seg_col, gmv_camp_col, gmv_seg_col]:
+        if c not in df.columns:
+            raise ValueError(f"Coluna obrigatória '{c}' não encontrada no DataFrame.")
+
+    # agrega por grupo (target/control) para cada mês
+    agg = (
+        df.groupby("is_target")
+          .agg(
+              pedidos_campanha=(freq_camp_col, "sum"),
+              gmv_campanha=(gmv_camp_col, "sum"),
+              pedidos_seguinte=(freq_seg_col, "sum"),
+              gmv_seguinte=(gmv_seg_col, "sum"),
+              clientes=("customer_id", "nunique")
+          )
+    )
+
+    # helper para pegar linha por grupo
+    row_t = agg.loc["target"]
+    row_c = agg.loc["control"]
+
+    # --- Pedidos por cliente em cada mês ---
+    pedidos_cli_t_dec = row_t["pedidos_campanha"]   / row_t["clientes"]
+    pedidos_cli_c_dec = row_c["pedidos_campanha"]   / row_c["clientes"]
+
+    pedidos_cli_t_jan = row_t["pedidos_seguinte"]   / row_t["clientes"]
+    pedidos_cli_c_jan = row_c["pedidos_seguinte"]   / row_c["clientes"]
+
+    # --- GMV por cliente em cada mês ---
+    gmv_cli_t_dec = row_t["gmv_campanha"] / row_t["clientes"]
+    gmv_cli_c_dec = row_c["gmv_campanha"] / row_c["clientes"]
+
+    gmv_cli_t_jan = row_t["gmv_seguinte"] / row_t["clientes"]
+    gmv_cli_c_jan = row_c["gmv_seguinte"] / row_c["clientes"]
+
+    # --- Incremento de pedidos (Target vs Controle) ---
+    # Escalando pelo número de clientes TARGET (mesma lógica da função original)
+    inc_pedidos_dec = (pedidos_cli_t_dec - pedidos_cli_c_dec) * row_t["clientes"]
+    inc_pedidos_jan = (pedidos_cli_t_jan - pedidos_cli_c_jan) * row_t["clientes"]
+    inc_pedidos_total = inc_pedidos_dec + inc_pedidos_jan
+
+    # --- Incremento de GMV ---
+    inc_gmv_dec = (gmv_cli_t_dec - gmv_cli_c_dec) * row_t["clientes"]
+    inc_gmv_jan = (gmv_cli_t_jan - gmv_cli_c_jan) * row_t["clientes"]
+    inc_gmv_total = inc_gmv_dec + inc_gmv_jan
+
+    # --- Margem incremental ---
+    margem_incremental = inc_gmv_total * margin_rate
+
+    # --- Custo da campanha ---
+    # premissa: cupom usado 1x por cliente target que fez pedido no mes_campanha
+    base_target_camp = df[
+        (df["is_target"] == "target") &
+        (df[freq_camp_col] > 0)
+    ]["customer_id"].nunique()
+
+    custo_campanha = base_target_camp * coupon_value
+
+    # --- ROI ---
+    lucro_incremental = margem_incremental - custo_campanha
+    roi = lucro_incremental / custo_campanha if custo_campanha > 0 else None
+
+    resultados = {
+        "pedidos_por_cliente_camp_control": pedidos_cli_c_dec,
+        "pedidos_por_cliente_camp_target": pedidos_cli_t_dec,
+        "pedidos_por_cliente_seg_control": pedidos_cli_c_jan,
+        "pedidos_por_cliente_seg_target": pedidos_cli_t_jan,
+        "inc_pedidos_camp": inc_pedidos_dec,
+        "inc_pedidos_seg": inc_pedidos_jan,
+        "inc_pedidos_total": inc_pedidos_total,
+        "inc_gmv_camp": inc_gmv_dec,
+        "inc_gmv_seg": inc_gmv_jan,
+        "inc_gmv_total": inc_gmv_total,
+        "margem_incremental": margem_incremental,
+        "base_target_camp": base_target_camp,
+        "custo_campanha": custo_campanha,
+        "lucro_incremental": lucro_incremental,
+        "roi": roi,
+        "coupon_value": coupon_value,
+        "margin_rate": margin_rate,
+        "mes_campanha": mes_campanha,
+        "mes_seguinte": mes_seguinte,
+    }
+
+    return resultados, agg

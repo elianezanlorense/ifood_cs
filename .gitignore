@@ -13,3 +13,6 @@ dados/gold/
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+dados/*
+!dados/gold/
+!dados/gold/*
