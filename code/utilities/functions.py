@@ -8,7 +8,7 @@ import json
 import pandas as pd
 from statsmodels.stats.proportion import proportions_ztest
 from pathlib import Path 
-
+import numpy as np
 
 def load_data(url: str):
     """
@@ -151,22 +151,27 @@ def join_group_count(df1, df2, key, how, group_col):
 
 
 def save_parquet(df, folder_name, filename):
-    project_root = Path.cwd().parent
-    dados_folder = project_root / "dados"
-    stage_folder = dados_folder / "stage"
-    bronze_folder = dados_folder / "bronze"
-    silver_folder = dados_folder / "silver"
-    gold_folder = dados_folder / "gold"
-
-    for folder in [dados_folder, stage_folder, bronze_folder, silver_folder, gold_folder]:
-        folder.mkdir(parents=True, exist_ok=True)
-
-    target_folder = dados_folder / folder_name
+    """
+    Salva DataFrame em formato Parquet na pasta dados/<folder_name>/
+    """
+    import os
+    from pathlib import Path
+    
+    # Caminho: dados/silver/, dados/gold/, etc.
+    target_folder = Path("dados") / folder_name
+    
+    # Cria a pasta se não existir
     target_folder.mkdir(parents=True, exist_ok=True)
-
+    
+    # Caminho completo do arquivo
     path = target_folder / filename
+    
+    # Salva o arquivo
     df.to_parquet(path, index=False)
-
+    
+    print(f"💾 SALVO: {path}")
+    print(f"📁 Local: {path.absolute()}")
+    
     return path
 
 
@@ -329,7 +334,7 @@ def matriz_migracao(df, mes_0, mes_1):
     # CORREÇÃO: Retornar a tupla (df_final, df_percent)
     return df_final, df_percent
 
-def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int) -> pd.DataFrame:
+def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int,mes_coorte_fim: int) -> pd.DataFrame:
     """
     Filtra clientes ativos no mês de início (coorte), pivota a contagem de pedidos
     para o mês de início e o mês seguinte, e retorna um DataFrame resumido
@@ -347,11 +352,11 @@ def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int) -> pd.DataFram
     
     # 1. DEFINIÇÃO DA COORTE E CÁLCULO DO MÊS FINAL
     # Calcula o mês seguinte, tratando a virada do ano (12 -> 1)
-    mes_coorte_fim = 1 if mes_coorte_inicio == 12 else mes_coorte_inicio + 1
+    #mes_coorte_fim = 1 if mes_coorte_inicio == 12 else mes_coorte_inicio + 1
     
     # Identificar IDs de clientes ativos no mês de início
     id_coorte_inicio = df[df['order_created_month'] == mes_coorte_inicio]['customer_id'].unique()
-    
+    (id_coorte_inicio)
     # Filtrar o DataFrame apenas para os clientes da coorte
     # e apenas para os dois meses de interesse
     df_coorte = df[
@@ -359,53 +364,33 @@ def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int) -> pd.DataFram
         (df['order_created_month'].isin([mes_coorte_inicio, mes_coorte_fim]))
     ].reset_index(drop=True)
 
-    # 2. PIVOTAMENTO DA COORTE
-    df_pivotado = df_coorte.pivot(
-        index=['customer_id', 'is_target'], 
-        columns='order_created_month',
-        values='num_pedidos_mes'
-    ).fillna(0).reset_index()
-
-    # Remover o nome do cabeçalho
-    df_pivotado.columns.name = None 
-
-    # 3. RENOMEAÇÃO DE COLUNAS
-    
-    # Mapeamento padrão dos nomes das colunas de pedidos
-    mapeamento_renomeacao = {
+    df_pivotado = (df_coorte
+    .groupby(['customer_id', 'is_target', 'order_created_month'])['num_pedidos_mes']
+    .sum()
+    .reset_index()
+    .pivot(index=['customer_id', 'is_target'], columns='order_created_month', values='num_pedidos_mes')
+    .fillna(0)
+    .reset_index()
+    .rename(columns={
         mes_coorte_inicio: f'Total_Pedidos_Mes_{mes_coorte_inicio}',
-        mes_coorte_fim: f'Total_Pedidos_Mes_{mes_coorte_fim}',
-        'customer_id': 'ID_Cliente'
-    }
-    
-    # Tratamento especial para Dezembro (12) e Janeiro (1)
-    if mes_coorte_inicio == 12 and mes_coorte_fim == 1:
-        mapeamento_renomeacao = {
-            12: 'Total_Pedidos_Dezembro',
-            1: 'Total_Pedidos_Janeiro',
-            'customer_id': 'ID_Cliente'
-        }
+        mes_coorte_fim: f'Total_Pedidos_Mes_{mes_coorte_fim}'
+    })
+)   
+    col_inicio = f'Total_Pedidos_Mes_{mes_coorte_inicio}'
+    col_fim = f'Total_Pedidos_Mes_{mes_coorte_fim}'
 
-    df_final = df_pivotado.rename(columns=mapeamento_renomeacao)
-    
-    # 4. AGRUPAMENTO FINAL (Resumo por Padrão de Pedidos)
-    
-    # Define os nomes de coluna finais
-    col_inicio = mapeamento_renomeacao.get(mes_coorte_inicio, f'Total_Pedidos_Mes_{mes_coorte_inicio}')
-    col_fim = mapeamento_renomeacao.get(mes_coorte_fim, f'Total_Pedidos_Mes_{mes_coorte_fim}')
-    
     columns_to_group_by = [
-        'is_target', 
-        col_fim,
-        col_inicio
-    ] 
+    'is_target', 
+    col_fim,
+    col_inicio
+] 
 
-    # Agrupar e contar, usando 'is_target' como valor para a contagem
-    df_resumo_por_pedidos = df_final.groupby(columns_to_group_by).agg(
-        Total_Clientes=('is_target', 'count')
+    df_resumo_por_pedidos = df_pivotado.groupby(columns_to_group_by).agg(
+    Total_Clientes=('is_target', 'count')
     ).reset_index()
 
     df_resumo_por_pedidos.columns.name = None
+
     
     return df_resumo_por_pedidos
 
@@ -676,7 +661,7 @@ def cria_base_decil_wide(
 
     return wide_final, decil_dict  # AGORA RETORNA AMBOS
 
-import pandas as pd
+
 
 def calcula_viabilidade(df, 
                         mes_campanha=12, 
@@ -827,31 +812,29 @@ def analisar_retencao(df):
 
     return resultado 
 
-def segmentacao_3(delta):
+def segmentacao_3_otimizada(df):
     """
-    Classifica mobilidade e direção com base no delta do decil.
-    Retorna um dicionário com as duas classificações.
+    Classifica mobilidade e direção de forma VETORIZADA
     """
-    # Mobilidade
-    if delta == 0:
-        mobilidade = "Estável"
-    elif abs(delta) == 1:
-        mobilidade = "Mobilidade Moderada"
-    else:
-        mobilidade = "Alta Mobilidade"
+    # Mobilidade (vetorizado)
+    conditions_mob = [
+        df['delta_decil'] == 0,
+        abs(df['delta_decil']) == 1,
+        abs(df['delta_decil']) > 1
+    ]
+    choices_mob = ["Estável", "Mobilidade Moderada", "Alta Mobilidade"]
+    df['segmento_mobilidade'] = np.select(conditions_mob, choices_mob, default="Estável")
     
-    # Direção
-    if delta < 0:
-        direcao = "Upgrade"
-    elif delta > 0:
-        direcao = "Downgrade"
-    else:
-        direcao = "Estável"
-
-    return {
-        "segmento_mobilidade": mobilidade,
-        "direcao": direcao
-    }
+    # Direção (vetorizado)
+    conditions_dir = [
+        df['delta_decil'] < 0,
+        df['delta_decil'] > 0,
+        df['delta_decil'] == 0
+    ]
+    choices_dir = ["Upgrade", "Downgrade", "Estável"]
+    df['direcao'] = np.select(conditions_dir, choices_dir, default="Estável")
+    
+    return df
 
 # df com colunas:
 # ['customer_id', 'is_target', 'decil_1', 'decil_12',
