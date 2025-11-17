@@ -1,4 +1,13 @@
-# Case study 
+# 📊 iFood Case Study
+
+Este repositório contém o *case study* desenvolvido para o processo seletivo do iFood.  
+Aqui você encontra todo o pipeline de análise, preparação de dados, scripts, notebooks e resultados finais.
+
+---
+
+## 📁 Estrutura do Projeto
+
+ 
 
 #This readme is an overview of the case study for Ifood
 ifood_cs/
