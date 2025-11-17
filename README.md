@@ -4,29 +4,30 @@ Este repositorio contem, todos os passos utilizados para o case do Ifood
 
 ---
 
-## 📁 Estrutura do Projeto
+## Como esta estruturado
 
  
 
 ifood_cs/
 │
-├── main.py # Executa todo o pipeline
-├── requirements.txt # Dependências do projeto
-├── README.md # Documentação
+├── main.py                 # Executa todo o pipeline
+├── requirements.txt        # Dependências do projeto
+├── README.md               # Documentação
 │
-├── Resultados/ # Resultados e saídas
+├── Resultados/             # Resultados e saídas
 │
 ├── code/
-│ ├── script/
-│ │ ├── load_data.py # Carregamento e preparação dos dados
-│ │ ├── analysis.py # Scripts de análise
-│ │ ├── case_item_1.py # Case 1
-│ │ └── case_item_2.py # Case 2
-│ │
-│ └── utilities/
-│ └── functions.py # Funções auxiliares
+│   ├── script/
+│   │   ├── load_data.py    # Load data
+│   │   ├── analysis.py     # Scripts de análise
+│   │   ├── case_item_1.py  # Case 1
+│   │   └── case_item_2.py  # Case 2
+│   │
+│   └── utilities/
+│       └── functions.py    # Funções auxiliares
 │
-└── notebook/ # Notebooks utilizados para exploração e ajustes
+└── notebook/               # Notebooks utilizados para exploração e ajustes
+
 
 ---
 
