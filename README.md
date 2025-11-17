@@ -6,8 +6,7 @@ Este repositorio contem, todos os passos utilizados para o case do Ifood
 
 ## Como esta estruturado
 
- 
-
+```bash
 ifood_cs/
 │
 ├── main.py                 # Executa todo o pipeline
@@ -18,7 +17,7 @@ ifood_cs/
 │
 ├── code/
 │   ├── script/
-│   │   ├── load_data.py    # Load data
+│   │   ├── load_data.py    # Carregamento e preparação dos dados
 │   │   ├── analysis.py     # Scripts de análise
 │   │   ├── case_item_1.py  # Case 1
 │   │   └── case_item_2.py  # Case 2
@@ -27,9 +26,7 @@ ifood_cs/
 │       └── functions.py    # Funções auxiliares
 │
 └── notebook/               # Notebooks utilizados para exploração e ajustes
-
-
----
+```
 
 ## ▶️ Como Executar o Projeto
 
