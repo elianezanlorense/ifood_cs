@@ -1,7 +1,6 @@
-# 📊 iFood Case Study
+# iFood Case Study
 
-Este repositório contém o *case study* desenvolvido para o processo seletivo do iFood.  
-Aqui você encontra todo o pipeline de análise, preparação de dados, scripts, notebooks e resultados finais.
+Este repositorio contem, todos os passos utilizados para o case do Ifood
 
 ---
 
@@ -9,29 +8,47 @@ Aqui você encontra todo o pipeline de análise, preparação de dados, scripts,
 
  
 
-#This readme is an overview of the case study for Ifood
 ifood_cs/
-│── main.py              # run the whole pipeline
-│── requirements.txt
-│── README.md
-│── Resultados/          # results
 │
-└── code/
-    ├── script/
-    │   ├── load_data.py        # load and prep
-    │   ├── analisys.py         # analysis; migration
-    │   ├── case_item_1.py      # case 1 
-    │   └── case_item_2.py      # case 2 
-    │
-    ├── utilities/
-    │   └── functions.py        # functions
-    │
-    └── notebook/               # notebooks used to biuld the scripts/ to see more details of the data set, and also change parameters
+├── main.py # Executa todo o pipeline
+├── requirements.txt # Dependências do projeto
+├── README.md # Documentação
+│
+├── Resultados/ # Resultados e saídas
+│
+├── code/
+│ ├── script/
+│ │ ├── load_data.py # Carregamento e preparação dos dados
+│ │ ├── analysis.py # Scripts de análise
+│ │ ├── case_item_1.py # Case 1
+│ │ └── case_item_2.py # Case 2
+│ │
+│ └── utilities/
+│ └── functions.py # Funções auxiliares
+│
+└── notebook/ # Notebooks utilizados para exploração e ajustes
 
-to run: 
+---
+
+## ▶️ Como Executar o Projeto
+
+### **1. Criar ambiente virtual**
+
+#### macOS / Linux
+```bash
 python3 -m venv venv
-source venv/bin/activate      # macOS / Linux
-venv\Scripts\activate         # Windows
-install:
+source venv/bin/activate
+Windows
+python -m venv venv
+venv\Scripts\activate
+2. Instalar dependências
 pip install -r requirements.txt
-to run: python main.py - bash/terminal
+3. Rodar o pipeline completo
+python main.py
+Livrary necessaria em requirements.txt
+Notebooks: contém arquivos usados para exploracao de dados, bem como os parametros para serem alterados
+Resultados: salva todos os outputs 
+
+
+
+tterminal
