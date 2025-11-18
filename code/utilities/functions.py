@@ -149,31 +149,23 @@ def join_group_count(df1, df2, key, how, group_col):
 
 
 
-
 def save_parquet(df, folder_name, filename):
     """
-    Salva DataFrame em formato Parquet na pasta dados/<folder_name>/
+    Salva DataFrame em formato Parquet na RAIZ do projeto
     """
-    import os
     from pathlib import Path
     
-    # Caminho: dados/silver/, dados/gold/, etc.
-    target_folder = Path("dados") / folder_name
+    # Caminho absoluto direto para a raiz
+    projeto_root = Path("/Users/maceli/ifood_cs")  # AJUSTE SEU CAMINHO
     
-    # Cria a pasta se não existir
+    target_folder = projeto_root / "dados" / folder_name
     target_folder.mkdir(parents=True, exist_ok=True)
     
-    # Caminho completo do arquivo
     path = target_folder / filename
-    
-    # Salva o arquivo
     df.to_parquet(path, index=False)
     
-    print(f"💾 SALVO: {path}")
-    print(f"📁 Local: {path.absolute()}")
-    
+    print(f"💾 SALVO na RAIZ: {path}")
     return path
-
 
 def merge_df(df1, df2, key, how='left'):
     """
@@ -361,72 +353,52 @@ def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int,mes_coorte_fim:
     
     return df_resumo_por_pedidos
 
+def process_orders_pandas_fast(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
 
-
-def process_orders_pandas(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    
-    Includes calculated metrics per customer per month using 'order_total_amount':
-      - total_amount_mes (Total Amount by Customer/Month)
-      - ticket_medio (Average Amount / AOV by Customer/Month)
-      - num_pedidos_mes (Total Orders / Frequency by Customer/Month)
-   
-    """
-
+    # 1) converter datas + extrair mês
     df['order_created_at'] = pd.to_datetime(df['order_created_at'])
     df['order_created_month'] = df['order_created_at'].dt.month
     df = df.drop(columns=['order_id'], errors='ignore')
 
-
-    df["unique_order_hash"] = (
-        df["customer_id"].astype(str) + "||" + 
-        df["order_created_at"].dt.strftime('%Y-%m-%d %H:%M:%S')
+    # 2) hash rápido vetorizado (muito melhor que string concat)
+    df['unique_order_hash'] = pd.util.hash_pandas_object(
+        df[['customer_id', 'order_created_at','order_id']],
+        index=False
     )
 
-    df_counts = (
-        df.groupby(["order_created_month", "is_target", "active"])
-        .size()
-        .reset_index(name='count')
-    )
-   
+    # 3) aggregations por cliente/mês
     group_cols = ["customer_id", "is_target", "order_created_month"]
 
-    df['total_amount_mes'] = (
-        df.groupby(group_cols)['order_total_amount'].transform('sum')
-    )
- 
-    df['ticket_medio'] = (
-        df.groupby(group_cols)['order_total_amount'].transform('mean')
-    )
+    agg = df.groupby(group_cols)['order_total_amount'].transform(['sum', 'mean'])
+    df['total_amount_mes'] = agg['sum']
+    df['ticket_medio'] = agg['mean']
 
+    # 4) número de pedidos usando hash (único e rápido)
     df['num_pedidos_mes'] = (
-        df.groupby(group_cols).unique_order_hash.transform('count')
+        df.groupby(group_cols)['unique_order_hash'].transform('nunique')
     )
 
     df['num_pedidos_hist'] = (
-        df.groupby(["customer_id", "is_target"]).unique_order_hash.transform('count')
-    )
-    
-    df = df.sort_values(by=['customer_id', 'order_created_at'], ascending=[True, True])
-    
-    df["prev_order_time"] = (
-        df.groupby("customer_id")['order_created_at'].shift(1)
+        df.groupby(["customer_id", "is_target"])['unique_order_hash'].transform('nunique')
     )
 
-    df["diff_days"] = (
-        df['order_created_at'] - df['prev_order_time']
-    ).dt.days
+    # 5) ordenar + diff
+    df = df.sort_values(['customer_id', 'order_created_at'])
+    df['prev_order_time'] = df.groupby("customer_id")['order_created_at'].shift(1)
+    df['diff_days'] = (df['order_created_at'] - df['prev_order_time']).dt.days
 
-    df = df.sort_values(
-        by=['customer_id', 'order_created_at'], 
-        ascending=[False, True]
-    )
-
+    # 6) label
     df['pedidos_sum'] = np.where(
-                        df['num_pedidos_mes'] > 10,'10+',  
-                        df['num_pedidos_mes'].astype(str)
-                        )
+        df['num_pedidos_mes'] > 10, '10+',
+        df['num_pedidos_mes'].astype(str)
+    )
+
+    # 7) filtro igual ao seu código
+    df = df_publico[df_publico['diff_days'].notna()]
+
     return df
+
 
 def summary(dataframe):
     summary=dataframe.describe(include='all') 
