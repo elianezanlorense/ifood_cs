@@ -208,41 +208,8 @@ def join_group_count_with_nulls(df1, df2, key, how='left', group_col=''):
     )
 
 
-def matriz_migracao(df, mes_0, mes_1):
-    """
-    Gera matriz de migração entre dois meses:
-        - mes_0 → mês anterior
-        - mes_1 → mês seguinte
-    Retorna DataFrame com:
-        mes_{mes_0}, mes_{mes_1}, is_target, total_clientes
-    """
 
-    nome_col_0 = f"mes_{mes_0}"
-    nome_col_1 = f"mes_{mes_1}"
-
-    # 1) Criar flags por cliente
-    clientes_temp = (
-        df
-        .groupby(["customer_id", "is_target"])
-        .agg(
-            **{
-                nome_col_0: ("order_created_month", lambda s: int((s == mes_0).any())),
-                nome_col_1: ("order_created_month", lambda s: int((s == mes_1).any())),
-            }
-        )
-        .reset_index()
-    )
-
-    # 2) Contar clientes na matriz
-    resultado = (
-        clientes_temp
-        .groupby([nome_col_0, nome_col_1, "is_target"])["customer_id"]
-        .nunique()  # conta clientes únicos
-        .reset_index(name="total_clientes")
-        .sort_values([nome_col_0, nome_col_1])
-    )
-
-    return resultado
+   
 
 
 
@@ -455,6 +422,10 @@ def process_orders_pandas(df: pd.DataFrame) -> pd.DataFrame:
         ascending=[False, True]
     )
 
+    df['pedidos_sum'] = np.where(
+                        df['num_pedidos_mes'] > 10,'10+',  
+                        df['num_pedidos_mes'].astype(str)
+                        )
     return df
 
 def summary(dataframe):
@@ -1055,3 +1026,6 @@ def calcula_viabilidade_wide(df,
     }
 
     return resultados, agg
+
+
+
