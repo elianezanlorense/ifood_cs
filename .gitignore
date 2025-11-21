@@ -16,6 +16,7 @@ dados/gold/
 .DS_Store
 __pycache__/
 .ipynb_checkpoints/
+.txt
 
 # Dados - não versionar
 dados/
