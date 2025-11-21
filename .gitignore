@@ -8,6 +8,18 @@ dados/gold/
 *.parquet
 *.csv
 *.pkl
+# .gitignore atualizado
+*.parquet
+*.csv
+*.pkl
+*.gz
+.DS_Store
+__pycache__/
+.ipynb_checkpoints/
+
+# Dados - não versionar
+dados/
+order.json.gz
 
 # Python cache
 __pycache__/
