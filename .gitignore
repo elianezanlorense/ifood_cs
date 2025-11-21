@@ -16,3 +16,7 @@ __pycache__/
 dados/*
 !dados/gold/
 !dados/gold/*
+order.json.gz
+dados/
+.DS_Store
+*.parquet
