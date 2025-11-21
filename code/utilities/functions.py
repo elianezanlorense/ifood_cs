@@ -353,26 +353,26 @@ def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int,mes_coorte_fim:
     
     return df_resumo_por_pedidos
 
-def process_orders_pandas_fast(df: pd.DataFrame) -> pd.DataFrame:
+def process_orders_pandas(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
     # 1) converter datas + extrair mês
     df['order_created_at'] = pd.to_datetime(df['order_created_at'])
     df['order_created_month'] = df['order_created_at'].dt.month
-    df = df.drop(columns=['order_id'], errors='ignore')
 
     # 2) hash rápido vetorizado (muito melhor que string concat)
     df['unique_order_hash'] = pd.util.hash_pandas_object(
         df[['customer_id', 'order_created_at','order_id']],
         index=False
     )
+    df = df.drop(columns=['order_id'], errors='ignore')
 
-    # 3) aggregations por cliente/mês
+    # 3) aggregations por cliente/mês (FIXED)
     group_cols = ["customer_id", "is_target", "order_created_month"]
+    g = df.groupby(group_cols)['order_total_amount']
 
-    agg = df.groupby(group_cols)['order_total_amount'].transform(['sum', 'mean'])
-    df['total_amount_mes'] = agg['sum']
-    df['ticket_medio'] = agg['mean']
+    df['total_amount_mes'] = g.transform('sum')
+    df['ticket_medio'] = g.transform('mean')
 
     # 4) número de pedidos usando hash (único e rápido)
     df['num_pedidos_mes'] = (
@@ -389,13 +389,11 @@ def process_orders_pandas_fast(df: pd.DataFrame) -> pd.DataFrame:
     df['diff_days'] = (df['order_created_at'] - df['prev_order_time']).dt.days
 
     # 6) label
-    df['pedidos_sum'] = np.where(
-        df['num_pedidos_mes'] > 10, '10+',
-        df['num_pedidos_mes'].astype(str)
-    )
 
-    # 7) filtro igual ao seu código
-    df = df_publico[df_publico['diff_days'].notna()]
+
+    return df
+
+
 
     return df
 
@@ -498,114 +496,6 @@ def gerar_resumo_decis(df_decil):
 
 
     
-def cria_base_decil_wide(
-    df,
-    mes_0,
-    mes_1,
-    col_cliente="customer_id",
-    col_mes="order_created_month",
-    col_pedidos="num_pedidos_mes",
-    col_valor="total_amount_mes",
-    col_target="is_target",
-    n_decis=10,
-    prefixo_decil="decil",
-    prefixo_pedidos="num_pedidos_mes",
-    prefixo_valor="total_amount_mes"
-):
-    """
-    Creates a wide dataset with:
-    - Decil calculated on mes_0
-    - Same decil applied to mes_1 using the min/max dictionary
-    - Wide-format columns decil_{mes}, num_pedidos_mes_{mes}, total_amount_mes_{mes}
-    - Keeps the original target/control column untouched
-    
-    Returns:
-      df_wide, decil_dict
-    """
-    cols_base = [col_cliente, col_mes, col_pedidos, col_valor, col_target]
-    df_base = df[cols_base].drop_duplicates().reset_index(drop=True)
-
-    base_m0 = df_base[df_base[col_mes] == mes_0].copy()
-    col_decil_m0 = f"{prefixo_decil}_{mes_0}"
-
-    base_m0[col_decil_m0] = pd.qcut(
-        base_m0[col_valor],
-        n_decis,
-        labels=[f"decil {i+1}" for i in range(n_decis)]
-    )
-
-    faixas_decil = (
-        base_m0.groupby(col_decil_m0)[col_valor]
-        .agg(["min", "max"])
-        .reset_index()
-    )
-
-    decil_dict = {
-        row[col_decil_m0]: (row["min"], row["max"])
-        for _, row in faixas_decil.iterrows()
-    }
-
-    base_m1 = df_base[df_base[col_mes] == mes_1].copy()
-
-    def atribui_decil(valor, decil_dict):
-        for decil, (vmin, vmax) in decil_dict.items():
-            if vmin <= valor <= vmax:
-                return decil
-        return np.nan
-
-    col_decil_m1 = f"{prefixo_decil}_{mes_1}"
-    base_m1[col_decil_m1] = base_m1[col_valor].apply(
-        lambda x: atribui_decil(x, decil_dict)
-    )
-
-    base_m0["decil"] = base_m0[col_decil_m0]
-    base_m1["decil"] = base_m1[col_decil_m1]
-
-    colunas_finais = [
-        col_cliente,
-        col_mes,
-        col_pedidos,
-        col_valor,
-        col_target,
-        "decil"
-    ]
-
-    base_m0_final = base_m0[colunas_finais].copy()
-    base_m1_final = base_m1[colunas_finais].copy()
-
-    
-    base_long = pd.concat([base_m0_final, base_m1_final], ignore_index=True)
-
-
-    wide = base_long.copy()
-
-    wide["decil_col"] = prefixo_decil + "_" + wide[col_mes].astype(str)
-    wide["pedidos_col"] = prefixo_pedidos + "_" + wide[col_mes].astype(str)
-    wide["valor_col"] = prefixo_valor + "_" + wide[col_mes].astype(str)
-
-    wide_decil  = wide.pivot(index=col_cliente, columns="decil_col",  values="decil")
-    wide_ped    = wide.pivot(index=col_cliente, columns="pedidos_col", values=col_pedidos)
-    wide_valor  = wide.pivot(index=col_cliente, columns="valor_col",  values=col_valor)
-
-
-    target_df = (
-        base_long[[col_cliente, col_target]]
-        .drop_duplicates()
-        .set_index(col_cliente)
-    )
-
-    wide_final = (
-        target_df
-        .join(wide_decil, how="outer")
-        .join(wide_ped,   how="outer")
-        .join(wide_valor, how="outer")
-        .reset_index()
-    )
-
-    return wide_final, decil_dict  # AGORA RETORNA AMBOS
-
-
-
 def calcula_viabilidade(df, 
                         mes_campanha=12, 
                         mes_seguinte=1, 
