@@ -9,6 +9,8 @@ import pandas as pd
 from statsmodels.stats.proportion import proportions_ztest
 from pathlib import Path 
 import numpy as np
+import hashlib
+
 
 def load_data(url: str):
     """
@@ -179,10 +181,8 @@ def merge_df(df1, df2, key, how='left'):
     """
     Junta dois DataFrames e agrupa/conta, garantindo que os valores NULL 
     na coluna de agrupamento (resultantes da junção) sejam incluídos.
-    """
-    
-    # NOTA: O 'left' ou 'outer' merge é crucial para preservar as linhas 
-    # que podem ter NULL na coluna de agrupamento após a junção.
+    """    
+
     merged_df = df1.merge(df2, on=key, how=how)
 
     return merged_df
@@ -308,7 +308,7 @@ def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int,mes_coorte_fim:
 
 
 
-def process_orders_pandas(df: pd.DataFrame) -> pd.DataFrame:
+def orders_month_cli(df: pd.DataFrame) -> pd.DataFrame:
     """
     
     Includes calculated metrics per customer per month using 'order_total_amount':
@@ -318,55 +318,29 @@ def process_orders_pandas(df: pd.DataFrame) -> pd.DataFrame:
    
     """
 
-    df['order_created_at'] = pd.to_datetime(df['order_created_at'])
-    df['order_created_month'] = df['order_created_at'].dt.month
-    df = df.drop(columns=['order_id'], errors='ignore')
-
-
+    df['order_created_month'] =  pd.to_datetime(df['order_created_at']).dt.month
     df["unique_order_hash"] = (
-        df["customer_id"].astype(str) + "||" + 
-        df["order_created_at"].dt.strftime('%Y-%m-%d %H:%M:%S')
-    )
+    df[["customer_id", "order_id", "order_created_at"]]
+    .astype(str)
+    .agg("||".join, axis=1)
+    .apply(lambda x: hashlib.md5(x.encode()).hexdigest()))
 
-    df_counts = (
-        df.groupby(["order_created_month", "is_target", "active"])
-        .size()
-        .reset_index(name='count')
-    )
-   
-    group_cols = ["customer_id", "is_target", "order_created_month"]
-
-    df['total_amount_mes'] = (
-        df.groupby(group_cols)['order_total_amount'].transform('sum')
-    )
- 
-    df['ticket_medio'] = (
-        df.groupby(group_cols)['order_total_amount'].transform('mean')
-    )
-
-    df['num_pedidos_mes'] = (
-        df.groupby(group_cols).unique_order_hash.transform('count')
-    )
+    group_cols = ["customer_id", "order_created_month"]  
+    agg_mes = (
+    df.groupby(group_cols)
+      .agg(
+          total_amount_mes = ('order_total_amount', 'sum'),
+          ticket_medio     = ('order_total_amount', 'mean'),
+          num_pedidos_mes  = ('unique_order_hash', 'count') 
+      )
+      .reset_index())
+    df = df.merge(agg_mes, on=group_cols, how='left')
 
     df['num_pedidos_hist'] = (
-        df.groupby(["customer_id", "is_target"]).unique_order_hash.transform('count')
-    )
+        df.groupby(["customer_id", "is_target"])['unique_order_hash']
+        .transform('count'))
+    df=df[["customer_id","is_target", "order_created_month", "num_pedidos_mes", "num_pedidos_hist",'total_amount_mes','ticket_medio']].drop_duplicates().reset_index(drop=True)
     
-    df = df.sort_values(by=['customer_id', 'order_created_at'], ascending=[True, True])
-    
-    df["prev_order_time"] = (
-        df.groupby("customer_id")['order_created_at'].shift(1)
-    )
-
-    df["diff_days"] = (
-        df['order_created_at'] - df['prev_order_time']
-    ).dt.days
-
-    df = df.sort_values(
-        by=['customer_id', 'order_created_at'], 
-        ascending=[False, True]
-    )
-
     return df
 
 def summary(dataframe):
