@@ -310,38 +310,49 @@ def resumo_coorte_ativa(df: pd.DataFrame, mes_coorte_inicio: int,mes_coorte_fim:
 
 def orders_month_cli(df: pd.DataFrame) -> pd.DataFrame:
     """
-    
     Includes calculated metrics per customer per month using 'order_total_amount':
       - total_amount_mes (Total Amount by Customer/Month)
       - ticket_medio (Average Amount / AOV by Customer/Month)
       - num_pedidos_mes (Total Orders / Frequency by Customer/Month)
-   
     """
-
-    df['order_created_month'] =  pd.to_datetime(df['order_created_at']).dt.month
-    df["unique_order_hash"] = (
-    df[["customer_id", "order_id", "order_created_at"]]
-    .astype(str)
-    .agg("||".join, axis=1)
-    .apply(lambda x: hashlib.md5(x.encode()).hexdigest()))
+    
+    
+    df['order_created_at'] = pd.to_datetime(df['order_created_at'])
+    
+    df['order_created_month'] = df["order_created_at"].dt.month
+    df['unique_order_hash'] = pd.util.hash_pandas_object(
+        df[['customer_id', 'order_created_at', 'order_id']],
+        index=False
+    )
+    
+    df = df.assign(
+        weekday=df["order_created_at"].dt.day_name(),
+        hour=df["order_created_at"].dt.hour,
+        day=df["order_created_at"].dt.day
+    )
 
     group_cols = ["customer_id", "order_created_month"]  
     agg_mes = (
-    df.groupby(group_cols)
-      .agg(
-          total_amount_mes = ('order_total_amount', 'sum'),
-          ticket_medio     = ('order_total_amount', 'mean'),
-          num_pedidos_mes  = ('unique_order_hash', 'count') 
-      )
-      .reset_index())
+        df.groupby(group_cols)
+        .agg(
+            total_amount_mes=('order_total_amount', 'sum'),
+            ticket_medio=('order_total_amount', 'mean'),
+            num_pedidos_mes=('unique_order_hash', 'count') 
+        )
+        .reset_index()
+    )
+    
     df = df.merge(agg_mes, on=group_cols, how='left')
 
-    df['num_pedidos_hist'] = (
-        df.groupby(["customer_id", "is_target"])['unique_order_hash']
-        .transform('count'))
-    df=df[["customer_id","is_target", "order_created_month", "num_pedidos_mes", "num_pedidos_hist",'total_amount_mes','ticket_medio']].drop_duplicates().reset_index(drop=True)
+    df['num_pedidos_hist'] = df.groupby(["customer_id", "is_target"])['unique_order_hash'].transform('count')
     
-    return df
+    df1 = df[[
+        "customer_id", "is_target", "order_created_month", 
+        "num_pedidos_mes", "num_pedidos_hist", 
+        'total_amount_mes', 'ticket_medio'
+    ]].drop_duplicates().reset_index(drop=True)
+    
+    return df1, df
 
 def summary(dataframe):
     summary=dataframe.describe(include='all') 

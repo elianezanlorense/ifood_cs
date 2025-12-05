@@ -6,9 +6,10 @@ import urllib.request
 import gzip
 import json
 import pandas as pd
-from statsmodels.stats.proportion import proportions_ztest
 from pathlib import Path 
 import numpy as np
+
+### Load data
 def load_data(url: str):
     """
     Lê dados a partir de uma URL.
@@ -51,6 +52,57 @@ def load_data(url: str):
         print(f" Erro ao carregar dados da URL: {e}")
         return None
 
+#### Load orders
+def load_orders(
+    url: str,
+    customer_ids: list,
+    columns_to_drop: list = None,
+    max_lines: int = None
+):
+    """
+    Lê um arquivo .json.gz linha a linha de uma URL,
+    filtra pelos customer_ids fornecidos e retorna um DataFrame.
+
+    Parâmetros:
+    -----------
+    url : str
+        URL do arquivo .json.gz
+    customer_ids : list
+        Lista de customer_ids válidos (string ou int)
+    columns_to_drop : list (opcional)
+        Lista de colunas que serão removidas
+    max_lines : int (opcional)
+        Máximo de linhas a processar (None = arquivo completo)
+    """
+
+    customer_ids = set(map(str, customer_ids))  
+    columns_to_drop = columns_to_drop or []     
+
+    resp = urllib.request.urlopen(url)
+    gz = gzip.GzipFile(fileobj=resp)
+    text_stream = io.TextIOWrapper(gz, encoding="utf-8")
+
+    rows = []
+
+    for i, line in enumerate(text_stream, start=1):
+        record = json.loads(line)
+
+        # filtrar pelo customer_id
+        if str(record.get("customer_id")) in customer_ids:
+
+            # remover colunas
+            for col in columns_to_drop:
+                record.pop(col, None)
+
+            rows.append(record)
+
+        # limite opcional de linhas
+        if max_lines and i >= max_lines:
+            break
+
+    return pd.DataFrame(rows)
+
+##### Checa duplicidade
 def check_key_uniqueness(df: pd.DataFrame, cols):
     """
     Verifica NOT NULL e UNIQUE nas colunas fornecidas.
@@ -87,6 +139,7 @@ def check_key_uniqueness(df: pd.DataFrame, cols):
     print(f"✅ Colunas {cols} são NOT NULL e UNIQUE.")
     return True, None, None, None
 
+##### Count null
 def count_null(df: pd.DataFrame):
     total = df.isnull().sum().sort_values(ascending=False)
     percent = (df.isnull().sum())/df.isnull().count().sort_values(ascending=False)
