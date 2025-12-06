@@ -6,6 +6,7 @@ dados/gold/
 
 # Arquivos de dados em geral
 *.parquet
+*.png
 *.csv
 *.pkl
 # .gitignore atualizado
