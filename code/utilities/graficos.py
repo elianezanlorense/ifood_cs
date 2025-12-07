@@ -7,17 +7,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def boxplot_meses(df, meses):
-    for mes in meses:
-        control = df[(df['order_created_month']==mes) & (df['is_target']=='control')]['order_total_amount']
-        target = df[(df['order_created_month']==mes) & (df['is_target']=='target')]['order_total_amount']
+def boxplot_meses(df, var_cat,var_cont):
+    unique_domain=df[var_cat].unique()
+    for i in unique_domain:
+        control = df[(df[var_cat]==i) & (df['is_target']=='control')][var_cont]
+        target = df[(df[var_cat]==i) & (df['is_target']=='target')][var_cont]
         
         plt.figure(figsize=(10, 2))
         plt.boxplot([control, target], 
                     vert=False, 
                     labels=['Control', 'Target'],
                     flierprops={'markerfacecolor': 'red', 'marker': 'o', 'markeredgecolor': 'red'})
-        plt.title(f"Distribuição  order total amount por mês e grupo - mês {mes}")
+        plt.title(f"Distribuição  {var_cont}:{i}")
         plt.xlabel('Valor do pedido')
         plt.show()
 
